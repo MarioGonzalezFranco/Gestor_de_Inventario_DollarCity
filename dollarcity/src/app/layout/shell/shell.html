@@ -1,0 +1,99 @@
+<div class="shell" [class.menu-abierto]="menuAbierto()">
+
+  <!-- ===== MENÚ LATERAL ===== -->
+  <aside class="sidebar" id="menu-lateral">
+    <div class="marca">
+      <div class="marca-placa">
+        <img src="dollarcity.png" [alt]="appNombre" class="marca-logo">
+      </div>
+      <span class="marca-sub"><span class="marca-punto"></span> {{ appSubtitulo }}</span>
+    </div>
+
+    <div class="ubicacion card">
+      <label for="ubicacion-activa" class="etiqueta">Ubicación activa</label>
+      <select id="ubicacion-activa" class="ubicacion-select" (change)="cambiarUbicacion($event)" [disabled]="!auth.esAdmin()">
+        @for (u of auth.ubicacionesPermitidas(); track u.ubicacionId) {
+          <option [value]="u.ubicacionId" [selected]="u.ubicacionId === auth.ubicacionActiva()?.ubicacionId">
+            {{ u.nombre }}
+          </option>
+        }
+      </select>
+    </div>
+
+    <nav class="nav" aria-label="Menú principal">
+      @for (grupo of grupos(); track grupo.nombre) {
+        <div class="nav-grupo">
+          <span class="nav-grupo-titulo">{{ grupo.nombre }}</span>
+          @for (item of grupo.items; track item.ruta) {
+            <a class="nav-item" [routerLink]="item.ruta" routerLinkActive="activo"
+               [title]="item.descripcion" (click)="menuAbierto.set(false)">
+              <span class="nav-icono"><app-icono [nombre]="item.icono" [tamano]="18" /></span>
+              <span class="nav-texto">
+                <span class="nav-etiqueta">{{ item.etiqueta }}</span>
+                <span class="nav-descripcion">{{ item.descripcion }}</span>
+              </span>
+              @if (item.conContador && inventario.totalAlertas() > 0) {
+                <span class="nav-contador" [attr.aria-label]="inventario.totalAlertas() + ' alertas'">{{ inventario.totalAlertas() }}</span>
+              }
+            </a>
+          }
+        </div>
+      }
+    </nav>
+
+    <div class="usuario card">
+      <div class="usuario-datos">
+        <div class="avatar">{{ auth.iniciales() }}</div>
+        <div class="usuario-texto">
+          <span class="usuario-nombre">{{ auth.usuario()?.nombreCompleto }}</span>
+          <span class="usuario-rol">{{ auth.nombreRol() }}</span>
+        </div>
+      </div>
+      <button type="button" class="btn btn-secundario btn-salir" (click)="cerrarSesion()">
+        <app-icono nombre="salir" [tamano]="16" /> Cerrar sesión
+      </button>
+    </div>
+  </aside>
+
+  <!-- ===== CONTENIDO ===== -->
+  <div class="principal">
+    <!-- Fondo animado (decorativo) -->
+    <div class="fondo-animado" aria-hidden="true">
+      <span class="aura aura-verde"></span>
+      <span class="aura aura-amarilla"></span>
+      <span class="aura aura-menta"></span>
+      <span class="rejilla"></span>
+    </div>
+
+    <header class="topbar">
+      <button type="button" class="btn-icono solo-movil" (click)="alternarMenu()"
+              [attr.aria-expanded]="menuAbierto()" aria-controls="menu-lateral" aria-label="Abrir menú">
+        <app-icono nombre="menu" />
+      </button>
+
+      <label class="buscador">
+        <span class="visually-hidden">Buscar producto</span>
+        <app-icono nombre="buscar" [tamano]="18" />
+        <input type="search" placeholder="Buscar SKU, código EAN (13 dígitos) o descripción">
+      </label>
+
+      <div class="topbar-info">
+        <span class="fecha"><app-icono nombre="reloj" [tamano]="16" /> {{ fecha }} · {{ turno }}</span>
+        <button type="button" class="btn-icono" aria-label="Notificaciones">
+          <app-icono nombre="campana" />
+          @if (inventario.totalAlertas() > 0) { <span class="punto" aria-hidden="true"></span> }
+        </button>
+        <div class="avatar avatar-sm" aria-hidden="true">{{ auth.iniciales() }}</div>
+      </div>
+    </header>
+
+    <main class="contenido">
+      <router-outlet />
+    </main>
+  </div>
+
+  <!-- Fondo oscuro del menú en móvil -->
+  @if (menuAbierto()) {
+    <button type="button" class="velo solo-movil" aria-label="Cerrar menú" (click)="menuAbierto.set(false)"></button>
+  }
+</div>
