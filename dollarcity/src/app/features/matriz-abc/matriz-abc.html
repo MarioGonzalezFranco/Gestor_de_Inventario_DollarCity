@@ -1,0 +1,244 @@
+<section class="pagina">
+  <header class="encabezado">
+    <div>
+      <span class="etiqueta">Análisis de rentabilidad</span>
+      <h1>Matriz de clasificación ABC</h1>
+      <p>
+        Calculado con las ventas de los últimos {{ dias() }} días
+        @if (datos()?.alcanceVentas === 'RED') { de todas las tiendas }
+        · {{ auth.ubicacionActiva()?.nombre }}
+      </p>
+    </div>
+
+    <div class="acciones">
+      <div class="periodos" role="group" aria-label="Período de cálculo">
+        @for (p of periodos; track p) {
+          <button type="button" [class.activo]="dias() === p" [attr.aria-pressed]="dias() === p"
+                  (click)="cambiarPeriodo(p)" [disabled]="cargando()">
+            {{ p }} días
+          </button>
+        }
+      </div>
+      <button type="button" class="btn btn-secundario" (click)="recalcular()" [disabled]="cargando()">
+        {{ cargando() ? 'Calculando…' : 'Recalcular' }}
+      </button>
+    </div>
+  </header>
+
+  @if (error(); as mensaje) {
+    <div class="card aviso-error" role="alert">{{ mensaje }}</div>
+  }
+
+  @if (datos(); as d) {
+    <!-- Tarjetas por clase -->
+    <div class="clases">
+      @for (c of d.clases; track c.clase) {
+        <article class="card clase" [attr.data-clase]="c.clase">
+          <header>
+            <span class="letra">{{ c.clase }}</span>
+            <div>
+              <h2>{{ info[c.clase].titulo }}</h2>
+              <span class="detalle">{{ c.skus }} SKUs · {{ c.pctSkus | number: '1.0-1' }} % del surtido</span>
+            </div>
+          </header>
+
+          <div class="cifra">
+            <strong>{{ c.pctValor | number: '1.0-1' }} %</strong>
+            <span>del valor vendido · {{ c.valor | currency: 'USD' }}</span>
+          </div>
+
+          <p>{{ info[c.clase].descripcion }}</p>
+
+          <dl>
+            <div>
+              <dt>Con stock</dt>
+              <dd>{{ c.nivelServicio | number: '1.0-1' }} %</dd>
+            </div>
+            <div>
+              <dt>En alerta</dt>
+              <dd [class.rojo]="c.enAlerta > 0">{{ c.enAlerta }}</dd>
+            </div>
+            <div>
+              <dt>Conteo físico</dt>
+              <dd>{{ c.politicaConteo }}</dd>
+            </div>
+          </dl>
+        </article>
+      }
+    </div>
+
+    <!-- Curva de Pareto -->
+    <article class="card pareto">
+      <header class="pareto-encabezado">
+        <div>
+          <h2>Curva de Pareto</h2>
+          <p class="detalle">
+            Porcentaje acumulado del valor vendido, con los productos ordenados de mayor a menor venta.
+            Total del período: <strong>{{ d.totalValor | currency: 'USD' }}</strong>
+          </p>
+        </div>
+        <ul class="leyenda" aria-label="Leyenda">
+          <li><span class="muestra" data-clase="A"></span>Clase A · hasta {{ d.cortes.a }} %</li>
+          <li><span class="muestra" data-clase="B"></span>Clase B · hasta {{ d.cortes.b }} %</li>
+          <li><span class="muestra" data-clase="C"></span>Clase C · resto</li>
+        </ul>
+      </header>
+
+      @if (d.totalValor > 0) {
+        <div class="grafico" (mouseleave)="indiceHover.set(null)">
+          <svg [attr.viewBox]="'0 0 ' + grafico.ancho + ' ' + grafico.alto"
+               role="img" [attr.aria-label]="'Curva de Pareto: la clase A reúne ' + (resumenDe('A')?.pctValor ?? 0) + ' por ciento del valor'">
+            <!-- Franjas por clase -->
+            @for (f of franjas(); track f.clase) {
+              <rect [attr.x]="f.x" [attr.y]="grafico.margen.arriba" [attr.width]="f.ancho"
+                    [attr.height]="grafico.alto - grafico.margen.arriba - grafico.margen.abajo"
+                    class="franja" [attr.data-clase]="f.clase" />
+            }
+
+            <!-- Rejilla y eje Y -->
+            @for (v of grafico.lineasY; track v) {
+              <line class="rejilla" [attr.x1]="grafico.margen.izquierda" [attr.x2]="grafico.ancho - grafico.margen.derecha"
+                    [attr.y1]="escalaY(v)" [attr.y2]="escalaY(v)" />
+              <text class="eje" [attr.x]="grafico.margen.izquierda - 8" [attr.y]="escalaY(v) + 4" text-anchor="end">{{ v }} %</text>
+            }
+
+            <!-- Cortes A y B -->
+            <line class="corte" [attr.x1]="grafico.margen.izquierda" [attr.x2]="grafico.ancho - grafico.margen.derecha"
+                  [attr.y1]="escalaY(d.cortes.a)" [attr.y2]="escalaY(d.cortes.a)" />
+            <line class="corte" [attr.x1]="grafico.margen.izquierda" [attr.x2]="grafico.ancho - grafico.margen.derecha"
+                  [attr.y1]="escalaY(d.cortes.b)" [attr.y2]="escalaY(d.cortes.b)" />
+
+            <!-- Eje X -->
+            @for (v of grafico.marcasX; track v) {
+              <text class="eje" [attr.x]="escalaX(v)" [attr.y]="grafico.alto - 12" text-anchor="middle">{{ v }} %</text>
+            }
+
+            <!-- Curva -->
+            <path class="area" [attr.d]="rutaArea()" />
+            <path class="curva" [attr.d]="rutaCurva()" />
+
+            <!-- Punto activo -->
+            @if (puntoHover(); as p) {
+              <line class="guia" [attr.x1]="p.x" [attr.x2]="p.x"
+                    [attr.y1]="grafico.margen.arriba" [attr.y2]="grafico.alto - grafico.margen.abajo" />
+              <circle class="punto" [attr.data-clase]="p.producto.clase" [attr.cx]="p.x" [attr.cy]="p.y" r="6" />
+            }
+
+            <!-- Zonas sensibles al puntero, una por producto -->
+            @for (p of puntos(); track p.producto.productoId; let i = $index) {
+              <rect class="zona" [attr.x]="p.x - anchoColumna()" [attr.y]="grafico.margen.arriba"
+                    [attr.width]="anchoColumna()" [attr.height]="grafico.alto - grafico.margen.arriba - grafico.margen.abajo"
+                    (mouseenter)="indiceHover.set(i)" />
+            }
+          </svg>
+
+          @if (puntoHover(); as p) {
+            <div class="tooltip" [class.izquierda]="posicionTooltip(p).derecha"
+                 [style.left]="posicionTooltip(p).left" [style.top]="posicionTooltip(p).top">
+              <span class="mono sku">{{ p.producto.sku }} · Clase {{ p.producto.clase }}</span>
+              <strong>{{ p.producto.producto }}</strong>
+              <span>Valor: {{ p.producto.valor | currency: 'USD' }} ({{ p.producto.pctValor ?? 0 | number: '1.0-2' }} %)</span>
+              <span>Acumulado: {{ p.producto.pctAcumulado ?? 0 | number: '1.0-1' }} %</span>
+            </div>
+          }
+        </div>
+        <p class="nota-eje">Eje horizontal: porcentaje de los SKUs de la ubicación.</p>
+      } @else {
+        <p class="vacio">No hay ventas en este período. Todos los productos quedan en clase C.</p>
+      }
+    </article>
+
+    <!-- Tabla de productos -->
+    <article class="card">
+      <div class="tabla-barra">
+        <div class="pestanas" role="group" aria-label="Filtrar por clase">
+          @for (f of filtros; track f) {
+            <button type="button" [class.activo]="filtro() === f" [attr.aria-pressed]="filtro() === f"
+                    (click)="filtro.set(f)">
+              {{ etiquetaFiltro(f) }} <span class="mono">{{ conteoPorClase()[f] }}</span>
+            </button>
+          }
+        </div>
+
+        <div class="tabla-herramientas">
+          @if (conteosVencidos() > 0) {
+            <span class="chip chip-alerta">{{ conteosVencidos() }} productos A con conteo vencido</span>
+          }
+          <label class="filtro">
+            <span class="visually-hidden">Buscar producto</span>
+            <input class="input" type="search" placeholder="Buscar por SKU, nombre o código"
+                   [value]="buscar()" (input)="cambiarBusqueda($event)" />
+          </label>
+        </div>
+      </div>
+
+      <div class="tabla-caja">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Clase</th>
+              <th scope="col">SKU / EAN</th>
+              <th scope="col">Producto</th>
+              <th scope="col">Pasillo</th>
+              <th scope="col">Stock</th>
+              <th scope="col" class="num">Rotación semanal</th>
+              <th scope="col" class="num">Valor generado</th>
+              <th scope="col" class="num">Acumulado</th>
+              <th scope="col">Conteo físico</th>
+              <th scope="col">Último conteo</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (p of productosFiltrados(); track p.productoId) {
+              <tr>
+                <td><span class="insignia" [attr.data-clase]="p.clase">{{ p.clase }}</span></td>
+                <td>
+                  <span class="mono sku">{{ p.sku }}</span><br>
+                  <span class="ean mono">{{ p.codigoBarras ?? '—' }}</span>
+                </td>
+                <td>
+                  <strong>{{ p.producto }}</strong><br>
+                  <span class="detalle">{{ p.departamento }} · {{ p.categoria }}</span>
+                </td>
+                <td class="mono">{{ p.pasillo ?? '—' }}</td>
+                <td>
+                  <span class="mono">{{ p.cantidad | number }}</span>
+                  @if (p.estadoStock === 'AGOTADO' || p.estadoStock === 'BAJO') {
+                    <span class="chip" [class.chip-critico]="p.estadoStock === 'AGOTADO'" [class.chip-alerta]="p.estadoStock === 'BAJO'">
+                      {{ p.estadoStock === 'AGOTADO' ? 'Agotado' : 'Bajo' }}
+                    </span>
+                  }
+                </td>
+                <td class="mono num">{{ p.unidadesSemana | number: '1.0-1' }} u</td>
+                <td class="num">
+                  <span class="mono">{{ p.valor | currency: 'USD' }}</span><br>
+                  <span class="detalle">{{ p.pctValor ?? 0 | number: '1.0-2' }} %</span>
+                </td>
+                <td class="mono num">{{ p.pctAcumulado ?? 0 | number: '1.0-1' }} %</td>
+                <td>{{ p.politicaConteo }}</td>
+                <td>
+                  @if (p.ultimoConteo) {
+                    <span [class.vencido]="conteoVencido(p)">{{ p.ultimoConteo | date: 'dd/MM/yyyy HH:mm' }}</span>
+                  } @else {
+                    <span class="detalle" [class.vencido]="p.clase === 'A'">Sin conteo</span>
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="10" class="vacio">No hay productos que coincidan con el filtro.</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <p class="pie-tabla detalle">
+        Cálculo del {{ d.calculadoEn | date: 'dd/MM/yyyy HH:mm' }}.
+        Rotación semanal = unidades vendidas ÷ semanas del período.
+      </p>
+    </article>
+  } @else if (cargando()) {
+    <div class="card pendiente"><p>Calculando la clasificación…</p></div>
+  }
+</section>

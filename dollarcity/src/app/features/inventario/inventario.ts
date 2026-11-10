@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { CurrencyPipe } from '@angular/common';
 
 import { EstadoStock } from '../../core/models/inventario.model';
@@ -13,12 +13,24 @@ import { InventarioService } from '../../core/services/inventario.service';
       <header class="encabezado">
         <div>
           <span class="etiqueta">Catálogo activo · {{ auth.ubicacionActiva()?.codigo }}</span>
-          <h1>Gestión de Catálogo &amp; Stock Físico</h1>
+          <h1>Productos y stock</h1>
+          <p>{{ filtrados().length }} de {{ inventario.stockActual().length }} productos</p>
         </div>
-        @if (auth.rol() === 'CAJERO') {
-          <span class="chip chip-alerta">Solo consulta</span>
-        }
+        <div class="acciones">
+          @if (auth.rol() === 'CAJERO') {
+            <span class="chip chip-alerta">Solo consulta</span>
+          }
+          <label class="filtro">
+            <span class="visually-hidden">Filtrar productos</span>
+            <input type="search" class="input" placeholder="Filtrar por SKU, código o nombre"
+                   [value]="filtro()" (input)="filtro.set($any($event.target).value)">
+          </label>
+        </div>
       </header>
+
+      @if (inventario.error(); as mensaje) {
+        <div class="card aviso-error" role="alert">{{ mensaje }}</div>
+      }
 
       <div class="card tabla-caja">
         <table>
@@ -33,7 +45,7 @@ import { InventarioService } from '../../core/services/inventario.service';
             </tr>
           </thead>
           <tbody>
-            @for (s of inventario.stockActual(); track s.sku) {
+            @for (s of filtrados(); track s.productoId) {
               <tr>
                 <td><span class="mono sku">{{ s.sku }}</span><br><span class="mono ean">{{ s.codigoBarras }}</span></td>
                 <td><strong>{{ s.producto }}</strong><br><span class="detalle">{{ s.departamento }} · {{ s.categoria }}</span></td>
@@ -43,7 +55,11 @@ import { InventarioService } from '../../core/services/inventario.service';
                 <td><span class="chip" [class]="claseEstado(s.estadoStock)">{{ s.estadoStock }}</span></td>
               </tr>
             } @empty {
-              <tr><td colspan="6" class="vacio">No hay productos cargados para esta ubicación en los datos simulados.</td></tr>
+              <tr>
+                <td colspan="6" class="vacio">
+                  {{ inventario.cargando() ? 'Cargando productos…' : 'No hay productos que coincidan.' }}
+                </td>
+              </tr>
             }
           </tbody>
         </table>
@@ -55,6 +71,20 @@ import { InventarioService } from '../../core/services/inventario.service';
 export class Inventario {
   protected readonly auth = inject(AuthService);
   protected readonly inventario = inject(InventarioService);
+
+  protected readonly filtro = signal('');
+
+  /** Filtro local sobre los productos ya cargados de la API. */
+  protected readonly filtrados = computed(() => {
+    const texto = this.filtro().trim().toLowerCase();
+    const stock = this.inventario.stockActual();
+    if (!texto) return stock;
+    return stock.filter(s =>
+      s.sku.toLowerCase().includes(texto) ||
+      s.codigoBarras.includes(texto) ||
+      s.producto.toLowerCase().includes(texto)
+    );
+  });
 
   protected claseEstado(estado: EstadoStock): string {
     switch (estado) {

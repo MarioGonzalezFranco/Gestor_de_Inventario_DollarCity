@@ -3,7 +3,6 @@ import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { MOSTRAR_USUARIOS_DEMO } from '../../../core/config/constantes';
-import { CLAVE_DEMO, UBICACIONES } from '../../../core/data/mock-data';
 import { AuthService } from '../../../core/services/auth.service';
 
 interface Estadistica {
@@ -27,10 +26,8 @@ export class Login {
   private readonly route = inject(ActivatedRoute);
 
   // ---- Contenido del panel izquierdo ----
-  protected readonly totalTiendas = UBICACIONES.filter(u => u.tipo === 'TIENDA').length;
-
   protected readonly estadisticas: Estadistica[] = [
-    { valor: String(this.totalTiendas), titulo: 'Tiendas conectadas', nota: 'En línea', colorValor: 'amarillo', colorNota: 'verde', conPunto: true },
+    { valor: 'CEDI', titulo: 'Abastece a cada tienda', nota: 'En línea', colorValor: 'amarillo', colorNota: 'verde', conPunto: true },
     { valor: '4', titulo: 'Roles de acceso', nota: 'Permisos por rol', colorValor: 'blanco', colorNota: 'menta' },
     { valor: 'Live', titulo: 'Alertas reorden', nota: 'Matriz ABC activa', colorValor: 'ambar', colorNota: 'amarillo' }
   ];
@@ -41,9 +38,8 @@ export class Login {
     { nombre: 'Distribución Nacional', color: 'turquesa' }
   ];
 
-  // ---- Usuarios de prueba ----
+  // ---- Usuarios de prueba (solo el nombre; la contraseña se escribe a mano) ----
   protected readonly mostrarDemo = MOSTRAR_USUARIOS_DEMO;
-  protected readonly claveDemo = CLAVE_DEMO;
   protected readonly rolesDemo = [
     { etiqueta: 'Admin', usuario: 'admin' },
     { etiqueta: 'Bodega', usuario: 'bodega01' },
@@ -82,9 +78,10 @@ export class Login {
     this.router.navigateByUrl(redirect && redirect !== '/' ? redirect : this.auth.rutaInicio());
   }
 
-  /** Llena las credenciales de prueba con un destello en los campos. */
+  /** Llena el usuario de prueba con un destello; la contraseña la escribe el usuario. */
   protected usarDemo(usuario: string): void {
-    this.form.patchValue({ usuario, clave: this.claveDemo });
+    this.form.patchValue({ usuario, clave: '' });
+    document.getElementById('clave')?.focus();
     this.error.set(null);
     this.destello.set(false);
     setTimeout(() => this.destello.set(true));
