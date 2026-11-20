@@ -1,0 +1,393 @@
+<div class="pos">
+  <!-- ===== Barra superior ===== -->
+  <header class="barra">
+    <div class="marca">
+      <div class="marca-placa">
+        <img src="dollarcity.png" alt="Dollarcity" class="marca-logo" draggable="false">
+      </div>
+      <div class="marca-modulo">
+        <span class="marca-titulo">Punto de venta</span>
+        <span class="marca-tienda">
+          <app-icono nombre="ubicacion" [tamano]="14" /> {{ auth.ubicacionActiva()?.nombre }}
+        </span>
+      </div>
+    </div>
+
+    <div class="contexto">
+      <span class="dato solo-ancho">
+        <span class="avatar" aria-hidden="true">{{ auth.iniciales() }}</span>
+        <span class="dato-texto">
+          <strong>{{ auth.usuario()?.nombreCompleto }}</strong>
+          <span>{{ auth.nombreRol() }} · Turno {{ turno() }}</span>
+        </span>
+      </span>
+      <app-estado-conexion />
+    </div>
+
+    <nav class="acciones-barra" aria-label="Opciones de caja">
+      <time class="reloj mono solo-ancho" [attr.datetime]="ahora().toISOString()">{{ ahora() | date: 'HH:mm:ss' }}</time>
+      @if (totalCola()) {
+        <button type="button" class="boton-barra boton-cola" [class.con-rechazo]="cola.rechazadas().length > 0"
+                (click)="verCola.set(true)" aria-label="Ventas sin sincronizar">
+          <app-icono nombre="sincronizar" [tamano]="16" />
+          <span>{{ totalCola() }} {{ totalCola() === 1 ? 'pendiente' : 'pendientes' }}</span>
+        </button>
+      }
+      <a class="boton-barra" routerLink="/ventas" aria-label="Ventas del día">
+        <app-icono nombre="recibo" [tamano]="16" /> <span>Ventas del día</span>
+      </a>
+      <a class="boton-barra solo-ancho" [routerLink]="esSupervisor() ? '/dashboard' : '/inventario'"
+         [attr.aria-label]="esSupervisor() ? 'Ir al gestor' : 'Consultar stock'">
+        <app-icono [nombre]="esSupervisor() ? 'dashboard' : 'inventario'" [tamano]="16" />
+        <span>{{ esSupervisor() ? 'Ir al gestor' : 'Consultar stock' }}</span>
+      </a>
+      <button type="button" class="boton-barra boton-salir" [class.confirmar]="confirmarSalir()" (click)="salir()"
+              aria-label="Cerrar sesión" title="Cerrar sesión">
+        <app-icono nombre="salir" [tamano]="16" />
+      </button>
+    </nav>
+  </header>
+
+  <!-- ===== Aviso de operación sin conexión ===== -->
+  @if (modoSinConexion()) {
+    <div class="franja-sin-conexion" role="status">
+      <app-icono nombre="sin-conexion" [tamano]="20" />
+      <span>
+        <strong>Sin conexión con el servidor.</strong>
+        Las ventas se guardan en esta caja y se envían al volver la conexión. Solo efectivo.
+      </span>
+      @if (cola.ventana(); as v) {
+        <span class="franja-contador mono">{{ v.ventas }} / {{ limiteVentas }} ventas · desde {{ v.inicio | date: 'HH:mm' }}</span>
+      }
+    </div>
+  }
+
+  <main class="cuerpo">
+    <!-- ===== Catálogo ===== -->
+    <section class="catalogo" aria-label="Productos">
+      <div class="buscador">
+        <app-icono nombre="escaner" [tamano]="24" />
+        <label for="buscador" class="visually-hidden">Código de barras, SKU o nombre</label>
+        <input #buscador id="buscador" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Escanea o escribe el código, SKU o nombre y presiona Enter"
+               [value]="texto()" (input)="escribir($event)" (keydown.enter)="escanear()" />
+        @if (texto()) {
+          <button type="button" class="buscador-limpiar" (click)="limpiarBusqueda()" aria-label="Limpiar búsqueda">
+            <app-icono nombre="cerrar" [tamano]="18" />
+          </button>
+        }
+        <kbd>F2</kbd>
+      </div>
+      <p class="ayuda">Para varias unidades escribe la cantidad y un asterisco: <span class="mono">3*7402000000040</span></p>
+
+      <div class="departamentos" role="group" aria-label="Filtrar por departamento">
+        <button type="button" [class.activo]="departamentoId() === null" [attr.aria-pressed]="departamentoId() === null"
+                (click)="elegirDepartamento(null)">Más vendidos</button>
+        @for (d of departamentos(); track d.departamentoId) {
+          <button type="button" [class.activo]="departamentoId() === d.departamentoId"
+                  [attr.aria-pressed]="departamentoId() === d.departamentoId"
+                  (click)="elegirDepartamento(d.departamentoId)">{{ d.nombre }}</button>
+        }
+      </div>
+
+      @if (errorCatalogo(); as mensaje) {
+        <div class="card aviso-error" role="alert">{{ mensaje }}</div>
+      }
+
+      <div class="productos" [class.cargando]="cargandoCatalogo()">
+        @for (p of productos(); track p.productoId) {
+          <button type="button" class="producto" [disabled]="p.cantidad === 0 && !modoSinConexion()" (click)="agregarDesdeCatalogo(p)"
+                  [attr.aria-label]="'Agregar ' + p.producto + ', ' + (p.precio | currency: 'USD')">
+            <span class="producto-arriba">
+              <span class="producto-sku mono">{{ p.sku }}</span>
+              <span class="producto-precio">{{ p.precio | currency: 'USD' }}</span>
+            </span>
+            <span class="producto-nombre">{{ p.producto }}</span>
+            <span class="producto-abajo">
+              <span class="producto-stock" [attr.data-estado]="p.estadoStock">
+                {{ p.cantidad === 0 ? 'Agotado' : 'Stock ' + p.cantidad }}
+              </span>
+              @if (enTicket().get(p.productoId); as n) {
+                <span class="producto-en-ticket">{{ n }} en ticket</span>
+              }
+            </span>
+          </button>
+        } @empty {
+          <p class="vacio">
+            {{ cargandoCatalogo() ? 'Cargando productos…' : 'No hay productos que coincidan con la búsqueda.' }}
+          </p>
+        }
+      </div>
+    </section>
+
+    <!-- ===== Ticket y cobro ===== -->
+    <aside class="ticket card" aria-label="Ticket actual">
+      <header class="ticket-encabezado">
+        <div>
+          <h1>Ticket actual</h1>
+          <span class="detalle">
+            {{ modoSinConexion() ? 'Sin conexión: recibirá un número provisional' : 'El número se asigna al cobrar' }}
+          </span>
+        </div>
+        <span class="chip chip-ok">{{ articulos() }} {{ articulos() === 1 ? 'artículo' : 'artículos' }}</span>
+      </header>
+
+      <ul class="lineas" aria-live="polite">
+        @for (l of lineas(); track l.productoId) {
+          <li class="linea" [class.reciente]="ultimoAgregado() === l.productoId"
+              [class.excede]="l.cantidad > l.stock && !modoSinConexion()"
+              [class.faltante]="l.cantidad > l.stock && modoSinConexion()">
+            <div class="linea-info">
+              <span class="linea-nombre">{{ l.producto }}</span>
+              <span class="linea-detalle mono">{{ l.sku }} · {{ l.precio | currency: 'USD' }} c/u</span>
+              @if (l.cantidad > l.stock) {
+                @if (modoSinConexion()) {
+                  <span class="linea-aviso">El sistema registra {{ l.stock }}: quedará con faltante</span>
+                } @else {
+                  <span class="linea-alerta">Solo quedan {{ l.stock }}</span>
+                }
+              }
+            </div>
+
+            <div class="cantidad" role="group" [attr.aria-label]="'Cantidad de ' + l.producto">
+              <button type="button" (click)="cambiarCantidad(l, -1)" aria-label="Quitar una unidad">
+                <app-icono nombre="menos" [tamano]="16" />
+              </button>
+              <input type="number" min="1" [max]="modoSinConexion() ? 999 : l.stock" [value]="l.cantidad"
+                     (change)="escribirCantidad(l, $event)" aria-label="Cantidad" />
+              <button type="button" (click)="cambiarCantidad(l, 1)"
+                      [disabled]="l.cantidad >= 999 || (l.cantidad >= l.stock && !modoSinConexion())" aria-label="Agregar una unidad">
+                <app-icono nombre="mas" [tamano]="16" />
+              </button>
+            </div>
+
+            <span class="linea-subtotal mono">{{ l.precio * l.cantidad | currency: 'USD' }}</span>
+
+            <button type="button" class="linea-quitar" (click)="quitar(l)" [attr.aria-label]="'Quitar ' + l.producto">
+              <app-icono nombre="basura" [tamano]="18" />
+            </button>
+          </li>
+        } @empty {
+          <li class="ticket-vacio">
+            <app-icono nombre="escaner" [tamano]="40" [grosor]="1.5" />
+            <strong>El ticket está vacío</strong>
+            <span>Escanea un producto o tócalo en el catálogo.</span>
+          </li>
+        }
+      </ul>
+
+      <div class="totales">
+        <div class="total">
+          <span>Total a cobrar</span>
+          <strong>{{ total() | currency: 'USD' }}</strong>
+        </div>
+        <span class="iva">IVA incluido (13 %): {{ ivaIncluido() | currency: 'USD' }}</span>
+      </div>
+
+      <div class="pago">
+        <div class="metodos" role="radiogroup" aria-label="Método de pago">
+          <button type="button" role="radio" [attr.aria-checked]="metodo() === 'EFECTIVO'" [class.activo]="metodo() === 'EFECTIVO'"
+                  (click)="elegirMetodo('EFECTIVO')">
+            <app-icono nombre="efectivo" [tamano]="20" /> Efectivo <kbd>F3</kbd>
+          </button>
+          <button type="button" role="radio" [attr.aria-checked]="metodo() === 'TARJETA'" [class.activo]="metodo() === 'TARJETA'"
+                  [disabled]="modoSinConexion()" [title]="modoSinConexion() ? 'Sin conexión solo se acepta efectivo' : ''"
+                  (click)="elegirMetodo('TARJETA')">
+            <app-icono nombre="tarjeta" [tamano]="20" /> Tarjeta <kbd>F4</kbd>
+          </button>
+        </div>
+
+        @if (metodo() === 'EFECTIVO') {
+          <div class="efectivo">
+            <label for="efectivo">Efectivo recibido</label>
+            <div class="efectivo-fila">
+              <span class="efectivo-signo">$</span>
+              <input #campoEfectivo id="efectivo" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00"
+                     [value]="recibido() ?? ''" (input)="escribirEfectivo($event)" (keydown.enter)="cobrar()" />
+            </div>
+            <div class="montos">
+              <button type="button" (click)="montoRapido('exacto')" [disabled]="!lineas().length">Exacto</button>
+              @for (m of montosRapidos(); track m) {
+                <button type="button" (click)="montoRapido(m)">{{ m | currency: 'USD' : 'symbol' : '1.0-0' }}</button>
+              }
+            </div>
+            @if (cambio() !== null) {
+              <div class="cambio" [class.falta]="faltaEfectivo()" aria-live="polite">
+                <span>{{ faltaEfectivo() ? 'Falta' : 'Cambio' }}</span>
+                <strong>{{ montoCambio() | currency: 'USD' }}</strong>
+              </div>
+            }
+          </div>
+        }
+
+        <button type="button" class="cobrar" [class.sin-conexion]="modoSinConexion()" (click)="cobrar()" [disabled]="!puedeCobrar()">
+          <app-icono [nombre]="modoSinConexion() ? 'sin-conexion' : 'check'" [tamano]="22" />
+          {{ procesando() ? 'Registrando…' : (modoSinConexion() ? 'Cobrar sin conexión ' : 'Cobrar ') + (total() | currency: 'USD') }}
+          <kbd>F9</kbd>
+        </button>
+
+        <button type="button" class="vaciar" [class.confirmar]="confirmarVaciar()" (click)="vaciar()" [disabled]="!lineas().length">
+          {{ confirmarVaciar() ? '¿Vaciar el ticket? Presiona otra vez' : 'Vaciar ticket (Esc)' }}
+        </button>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ===== Atajos ===== -->
+  <footer class="atajos" aria-label="Atajos de teclado">
+    <span><kbd>F2</kbd> Buscar</span>
+    <span><kbd>Enter</kbd> Agregar</span>
+    <span><kbd>F3</kbd> Efectivo</span>
+    <span><kbd>F4</kbd> Tarjeta</span>
+    <span><kbd>F9</kbd> Cobrar</span>
+    <span><kbd>Esc</kbd> Limpiar / vaciar</span>
+  </footer>
+
+  <!-- ===== Avisos ===== -->
+  <div class="aviso-zona" aria-live="assertive">
+    @if (aviso(); as a) {
+      <div class="aviso" [attr.data-tipo]="a.tipo">{{ a.texto }}</div>
+    }
+  </div>
+
+  <!-- ===== Venta registrada ===== -->
+  @if (ventaRegistrada(); as v) {
+    <div class="velo">
+      <div class="confirmacion card" [class.pendiente]="v.pendiente" role="dialog" aria-modal="true" aria-labelledby="titulo-venta">
+        <app-icono [nombre]="v.pendiente ? 'sin-conexion' : 'check'" [tamano]="48" [grosor]="1.75" />
+        <h2 id="titulo-venta">{{ v.pendiente ? 'Venta guardada sin conexión' : 'Venta registrada' }}</h2>
+        <span class="mono confirmacion-ticket">{{ v.pendiente ? 'Provisional ' : '' }}{{ v.numeroTicket }}</span>
+        @if (v.pendiente) {
+          <p class="confirmacion-nota">Se enviará al servidor cuando vuelva la conexión y recibirá su número definitivo.</p>
+        }
+
+        <dl class="confirmacion-datos">
+          <div><dt>Total</dt><dd>{{ v.total | currency: 'USD' }}</dd></div>
+          <div><dt>Pago</dt><dd>{{ v.metodoPago === 'EFECTIVO' ? 'Efectivo' : 'Tarjeta' }}</dd></div>
+          @if (v.efectivoRecibido !== null) {
+            <div><dt>Recibido</dt><dd>{{ v.efectivoRecibido | currency: 'USD' }}</dd></div>
+          }
+        </dl>
+
+        @if (v.cambio !== null) {
+          <div class="confirmacion-cambio">
+            <span>Entregar de cambio</span>
+            <strong>{{ v.cambio | currency: 'USD' }}</strong>
+          </div>
+        }
+
+        <div class="confirmacion-acciones">
+          <button type="button" class="boton-ticket" (click)="ticket('descargar')" [disabled]="generandoTicket()">
+            <app-icono nombre="descargar" [tamano]="18" /> Descargar ticket
+          </button>
+          <button type="button" class="boton-ticket" (click)="ticket('imprimir')" [disabled]="generandoTicket()">
+            <app-icono nombre="imprimir" [tamano]="18" /> Imprimir
+          </button>
+        </div>
+
+        <button #botonNuevaVenta type="button" class="cobrar" (click)="nuevaVenta()">
+          Nueva venta <kbd>Enter</kbd>
+        </button>
+      </div>
+    </div>
+  }
+
+  <!-- ===== Ticket sin terminar ===== -->
+  @if (ticketRecuperable(); as t) {
+    <div class="velo">
+      <div class="dialogo card" role="dialog" aria-modal="true" aria-labelledby="titulo-recuperar">
+        <h2 id="titulo-recuperar">Tienes un ticket sin terminar</h2>
+        <p>
+          {{ t.lineas.length }} {{ t.lineas.length === 1 ? 'producto' : 'productos' }} ·
+          guardado el {{ t.guardado | date: 'dd/MM/yyyy HH:mm' }}. ¿Quieres recuperarlo?
+        </p>
+        <ul class="dialogo-lista">
+          @for (l of t.lineas; track l.productoId) {
+            <li><span class="mono">{{ l.cantidad }} ×</span> {{ l.producto }}</li>
+          }
+        </ul>
+        <div class="dialogo-acciones">
+          <button type="button" class="btn btn-secundario" (click)="descartarTicket()">Descartar <kbd>Esc</kbd></button>
+          <button type="button" class="btn btn-primario" (click)="recuperarTicket()">Recuperar <kbd>Enter</kbd></button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ===== PIN del supervisor ===== -->
+  @if (pedirPin()) {
+    <div class="velo">
+      <div class="dialogo card" role="dialog" aria-modal="true" aria-labelledby="titulo-pin">
+        <app-icono nombre="candado" [tamano]="36" [grosor]="1.75" />
+        <h2 id="titulo-pin">Autorización del supervisor</h2>
+        <p>
+          La caja llegó al límite sin conexión ({{ limiteVentas }} ventas o {{ limiteHoras }} horas).
+          Un supervisor debe ingresar su PIN para continuar.
+        </p>
+        <label class="campo-pin">
+          <span class="visually-hidden">PIN de 6 dígitos</span>
+          <input #campoPin type="password" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="••••••"
+                 (input)="escribirPin($event)" (keydown.enter)="confirmarPin()" [disabled]="verificandoPin()" />
+        </label>
+        @if (errorPin(); as mensaje) {
+          <div class="card aviso-error" role="alert">{{ mensaje }}</div>
+        }
+        <div class="dialogo-acciones">
+          <button type="button" class="btn btn-secundario" (click)="cerrarPin()" [disabled]="verificandoPin()">Cancelar</button>
+          <button type="button" class="btn btn-primario" (click)="confirmarPin()" [disabled]="verificandoPin() || pin().length !== 6">
+            {{ verificandoPin() ? 'Verificando…' : 'Autorizar' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ===== Ventas sin sincronizar ===== -->
+  @if (verCola()) {
+    <div class="velo" (click)="verCola.set(false)">
+      <div class="dialogo dialogo-ancho card" role="dialog" aria-modal="true" aria-labelledby="titulo-cola" (click)="$event.stopPropagation()">
+        <h2 id="titulo-cola">Ventas sin sincronizar</h2>
+        <p>
+          Están guardadas en esta caja. Se envían solas, en orden, cuando el servidor responde.
+          @if (cola.ventana(); as v) {
+            <br>Periodo sin conexión desde las {{ v.inicio | date: 'HH:mm' }}: {{ v.ventas }} de {{ limiteVentas }} ventas
+            @if (v.autorizadaNombre) { · autorizado por {{ v.autorizadaNombre }} }
+          }
+        </p>
+
+        <ul class="cola">
+          @for (v of cola.ventas(); track v.uuid) {
+            <li class="cola-item" [class.rechazada]="v.estado === 'RECHAZADA'">
+              <div class="cola-datos">
+                <strong class="mono">{{ v.ticketProvisional }}</strong>
+                <span>{{ v.fechaVenta | date: 'dd/MM HH:mm' }} · {{ v.cajero }} · {{ v.total | currency: 'USD' }}</span>
+                @if (v.error) {
+                  <span class="cola-error">{{ v.error }}</span>
+                }
+              </div>
+              @if (v.estado === 'RECHAZADA') {
+                <span class="chip chip-critico">Rechazada</span>
+                <div class="cola-acciones">
+                  <button type="button" class="enlace" (click)="reintentar(v.uuid)">Reintentar</button>
+                  <button type="button" class="enlace" (click)="descargarRespaldo(v.uuid)">Respaldo</button>
+                </div>
+              } @else {
+                <span class="chip chip-alerta">Pendiente</span>
+              }
+            </li>
+          } @empty {
+            <li class="cola-vacia">No hay ventas pendientes.</li>
+          }
+        </ul>
+
+        <div class="dialogo-acciones">
+          <button type="button" class="btn btn-secundario" (click)="verCola.set(false)">Cerrar</button>
+          <button type="button" class="btn btn-primario" (click)="sincronizarAhora()" [disabled]="cola.sincronizando()">
+            <app-icono nombre="sincronizar" [tamano]="16" />
+            {{ cola.sincronizando() ? 'Enviando…' : 'Enviar ahora' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

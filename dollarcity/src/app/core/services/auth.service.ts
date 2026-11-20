@@ -7,6 +7,12 @@ import { ResultadoLogin, Rol, Sesion, Ubicacion, Usuario } from '../models/usuar
 
 const CLAVE_STORAGE = 'dc_sesion';
 
+// Si la API no responde al iniciar sesión (por ejemplo, porque se está encendiendo),
+// se espera a que /api/salud conteste y se reintenta antes de mostrar el error
+const INTENTOS_LOGIN = 3;
+const ESPERA_API_MS = 10000;
+const PAUSA_SALUD_MS = 1000;
+
 /** Respuesta de POST /api/auth/login */
 interface RespuestaLogin {
   token: string;
@@ -52,9 +58,7 @@ export class AuthService {
     }
 
     try {
-      const { token, usuario } = await firstValueFrom(
-        this.http.post<RespuestaLogin>(`${API_URL}/auth/login`, { usuario: identificador, clave })
-      );
+      const { token, usuario } = await this.enviarLogin(identificador, clave);
 
       const ubicaciones = await firstValueFrom(
         this.http.get<Ubicacion[]>(`${API_URL}/ubicaciones`, { headers: { Authorization: `Bearer ${token}` } })
@@ -73,6 +77,38 @@ export class AuthService {
     } catch (error) {
       return this.traducirError(error);
     }
+  }
+
+  /**
+   * POST /api/auth/login con reintento solo cuando no hubo respuesta (status 0):
+   * la petición no llegó al servidor, así que reintentar no suma intentos fallidos.
+   */
+  private async enviarLogin(identificador: string, clave: string): Promise<RespuestaLogin> {
+    for (let intento = 1; ; intento++) {
+      try {
+        return await firstValueFrom(
+          this.http.post<RespuestaLogin>(`${API_URL}/auth/login`, { usuario: identificador, clave })
+        );
+      } catch (error) {
+        const sinRespuesta = error instanceof HttpErrorResponse && error.status === 0;
+        if (!sinRespuesta || intento >= INTENTOS_LOGIN || !(await this.esperarApi())) throw error;
+      }
+    }
+  }
+
+  /** Espera hasta que /api/salud responda (API y base de datos listas). */
+  private async esperarApi(): Promise<boolean> {
+    const limite = Date.now() + ESPERA_API_MS;
+    while (Date.now() < limite) {
+      try {
+        const respuesta = await fetch(`${API_URL}/salud`, { cache: 'no-store' });
+        if (respuesta.ok) return true;
+      } catch {
+        /* la API todavía no responde */
+      }
+      await new Promise((resolver) => setTimeout(resolver, PAUSA_SALUD_MS));
+    }
+    return false;
   }
 
   logout(): void {
@@ -96,7 +132,7 @@ export class AuthService {
 
   /** Pantalla a la que se envía al usuario después de entrar. */
   rutaInicio(): string {
-    return this.rol() === 'CAJERO' ? '/inventario' : '/dashboard';
+    return this.rol() === 'CAJERO' ? '/punto-venta' : '/dashboard';
   }
 
   /** Convierte la respuesta de error de la API en el mensaje que muestra el login. */

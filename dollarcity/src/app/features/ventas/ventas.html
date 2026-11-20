@@ -1,0 +1,281 @@
+<section class="pagina">
+    <header class="encabezado">
+        <div>
+            <span class="etiqueta">Caja</span>
+            <h1>{{ titulo() }}</h1>
+            <p>
+                {{ auth.ubicacionActiva()?.nombre }} ·
+                {{ vista() === 'dia' ? 'se actualiza solo con cada ticket' : 'ventas sin conexión con faltante o
+                diferencia de precio' }}
+            </p>
+        </div>
+        <div class="acciones">
+            @if (vista() === 'dia') {
+            <label class="fecha">
+                <span class="visually-hidden">Fecha</span>
+                <input class="input" type="date" [value]="fecha()" [max]="hoy" (change)="cambiarFecha($event)" />
+            </label>
+            } @else {
+            <button type="button" class="btn btn-secundario" (click)="verDia()">Volver a las ventas del día</button>
+            }
+            @if (puedeVender()) {
+            <a class="btn btn-primario" routerLink="/punto-venta">Ir al punto de venta</a>
+            }
+        </div>
+    </header>
+
+    @if (error(); as mensaje) {
+    <div class="card aviso-error" role="alert">{{ mensaje }}</div>
+    }
+
+    @if (esCedi()) {
+    <div class="card pendiente">
+        <p>El CEDI no registra ventas. Elige una tienda en "Ubicación activa".</p>
+    </div>
+    } @else if (vista() === 'revision' || datos()) {
+    @if (vista() === 'dia' && datos(); as d) {
+    <!-- Ventas sin conexión pendientes de revisión -->
+    @if (esSupervisor() && pendientesRevision() > 0) {
+    <div class="card aviso-revision" role="status">
+        <span>
+            <strong>{{ pendientesRevision() }} {{ pendientesRevision() === 1 ? 'venta sin conexión espera' : 'ventas sin
+                conexión esperan' }} revisión</strong>
+            por faltante de stock o diferencia de precio.
+        </span>
+        <button type="button" class="btn btn-acento" (click)="verRevision()">Revisar</button>
+    </div>
+    }
+
+    <!-- Indicadores -->
+    <div class="kpis">
+        <article class="card kpi">
+            <span class="etiqueta">Total vendido</span>
+            <strong>{{ d.resumen.totalVendido | currency: 'USD' }}</strong>
+            <span class="detalle-kpi">{{ d.resumen.articulos }} artículos</span>
+        </article>
+        <article class="card kpi">
+            <span class="etiqueta">Tickets</span>
+            <strong>{{ d.resumen.tickets }}</strong>
+            <span class="detalle-kpi">
+                Promedio {{ d.resumen.ticketPromedio | currency: 'USD' }}
+                @if (d.resumen.sinConexion) { · {{ d.resumen.sinConexion }} sin conexión }
+            </span>
+        </article>
+        <article class="card kpi">
+            <span class="etiqueta">Efectivo / Tarjeta</span>
+            <strong>{{ d.resumen.efectivo | currency: 'USD' }}</strong>
+            <span class="detalle-kpi">Tarjeta: {{ d.resumen.tarjeta | currency: 'USD' }}</span>
+        </article>
+        <article class="card kpi">
+            <span class="etiqueta">Anulados</span>
+            <strong [class.rojo]="d.resumen.anuladas > 0">{{ d.resumen.anuladas }}</strong>
+            <span class="detalle-kpi">{{ d.resumen.montoAnulado | currency: 'USD' }}</span>
+        </article>
+    </div>
+    }
+
+    <!-- Tickets -->
+    <div class="card tabla-caja">
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">{{ vista() === 'dia' ? 'Hora' : 'Fecha' }}</th>
+                    <th scope="col">Ticket</th>
+                    <th scope="col">Cajero</th>
+                    <th scope="col" class="num">Artículos</th>
+                    <th scope="col">Pago</th>
+                    <th scope="col" class="num">Total</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col"><span class="visually-hidden">Acciones</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (v of filas(); track v.ventaId) {
+                <tr [class.anulada]="v.estado === 'ANULADA'">
+                    <td class="mono">{{ v.fecha | date: (vista() === 'dia' ? 'HH:mm' : 'dd/MM HH:mm') }}</td>
+                    <td>
+                        <span class="mono sku">{{ v.numeroTicket }}</span>
+                        @if (v.origen === 'SIN_CONEXION') {
+                        <span class="chip chip-mini chip-alerta"
+                            [title]="'Ticket provisional ' + v.ticketProvisional">Sin conexión</span>
+                        }
+                    </td>
+                    <td>{{ v.cajero }}</td>
+                    <td class="mono num">{{ v.articulos }}</td>
+                    <td>{{ nombreMetodo(v.metodoPago) }}</td>
+                    <td class="mono num"><strong>{{ v.total | currency: 'USD' }}</strong></td>
+                    <td>
+                        <span class="estados">
+                            @if (v.estado === 'ANULADA') {
+                            <span class="chip chip-critico" [title]="v.motivoAnulacion ?? ''">Anulado</span>
+                            } @else {
+                            <span class="chip chip-ok">Completado</span>
+                            }
+                            @if (necesitaRevision(v)) {
+                            <span class="chip chip-alerta"
+                                [title]="(v.conFaltante ? 'Faltante de stock. ' : '') + (v.conDiferenciaPrecio ? 'Precio distinto al del catálogo.' : '')">Por
+                                revisar</span>
+                            } @else if (v.revisadaEn) {
+                            <span class="chip chip-ok" [title]="'Revisado por ' + v.revisadaPor">Revisado</span>
+                            }
+                        </span>
+                    </td>
+                    <td class="acciones-fila">
+                        <button type="button" class="enlace" (click)="alternarDetalle(v)"
+                            [attr.aria-expanded]="abierta() === v.ventaId">
+                            {{ abierta() === v.ventaId ? 'Ocultar' : 'Ver' }}
+                        </button>
+                        <button type="button" class="enlace" (click)="descargarTicket(v)"
+                            [disabled]="ticketEnProceso() === v.ventaId">
+                            {{ ticketEnProceso() === v.ventaId ? 'Generando…' : 'Ticket' }}
+                        </button>
+                        @if (esSupervisor() && necesitaRevision(v)) {
+                        <button type="button" class="enlace" (click)="pedirRevision(v)">Revisar</button>
+                        }
+                        @if (esSupervisor() && v.estado === 'COMPLETADA' && v.esDeHoy) {
+                        <button type="button" class="enlace peligro" (click)="pedirAnulacion(v)">Anular</button>
+                        }
+                    </td>
+                </tr>
+
+                @if (abierta() === v.ventaId) {
+                <tr class="fila-detalle">
+                    <td colspan="8">
+                        @if (detalle(); as det) {
+                        <ul class="lineas-detalle">
+                            @for (l of det.lineas; track l.productoId) {
+                            <li>
+                                <span class="mono">{{ l.cantidad }} ×</span>
+                                <span>
+                                    {{ l.producto }} <span class="detalle mono">{{ l.sku }}</span>
+                                    @if (l.cantidadFaltante) {
+                                    <span class="nota-linea">{{ l.cantidadFaltante }} sin stock en el sistema</span>
+                                    }
+                                    @if (l.precioCatalogo != null && l.precioCatalogo !== l.precioUnitario) {
+                                    <span class="nota-linea">Precio de catálogo {{ l.precioCatalogo | currency: 'USD'
+                                        }}</span>
+                                    }
+                                </span>
+                                <span class="mono">{{ l.precioUnitario | currency: 'USD' }}</span>
+                                <strong class="mono">{{ l.subtotal | currency: 'USD' }}</strong>
+                            </li>
+                            }
+                        </ul>
+                        @if (det.origen === 'SIN_CONEXION') {
+                        <p class="nota-sin-conexion">
+                            Venta cobrada sin conexión con el ticket provisional {{ det.ticketProvisional }}.
+                            Llegó al servidor el {{ det.sincronizadaEn | date: 'dd/MM/yyyy HH:mm' }}.
+                            @if (det.autorizadaPor) { Autorizó la operación sin conexión: {{ det.autorizadaPor }}. }
+                        </p>
+                        }
+                        @if (det.revisadaEn) {
+                        <p class="nota-revision">
+                            Revisado por {{ det.revisadaPor }} el {{ det.revisadaEn | date: 'dd/MM/yyyy HH:mm' }}.
+                            Observación: {{ det.observacionRevision }}
+                        </p>
+                        }
+                        @if (det.estado === 'ANULADA') {
+                        <p class="nota-anulacion">
+                            Anulado por {{ det.anuladaPor }} el {{ det.anuladaEn | date: 'dd/MM/yyyy HH:mm' }}.
+                            Motivo: {{ det.motivoAnulacion }}
+                        </p>
+                        }
+                        } @else {
+                        <p class="detalle">Cargando detalle…</p>
+                        }
+                    </td>
+                </tr>
+                }
+                } @empty {
+                <tr>
+                    <td colspan="8" class="vacio">
+                        @if (vista() === 'dia') {
+                        {{ cargando() ? 'Cargando ventas…' : 'No hay tickets registrados en esta fecha.' }}
+                        } @else {
+                        {{ listaRevision() === null ? 'Cargando ventas por revisar…' : 'No hay ventas pendientes de
+                        revisión.' }}
+                        }
+                    </td>
+                </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    } @else if (cargando()) {
+    <div class="card pendiente">
+        <p>Cargando ventas…</p>
+    </div>
+    }
+</section>
+
+<!-- Confirmación de anulación -->
+@if (porAnular(); as v) {
+<div class="velo" (click)="cerrarAnulacion()">
+    <div class="dialogo card" role="dialog" aria-modal="true" aria-labelledby="titulo-anular"
+        (click)="$event.stopPropagation()">
+        <h2 id="titulo-anular">Anular ticket {{ v.numeroTicket }}</h2>
+        <p>
+            Total {{ v.total | currency: 'USD' }} · {{ v.articulos }} artículos.
+            Las unidades regresan al stock de la tienda. Esta acción no se puede deshacer.
+        </p>
+
+        <label class="campo">
+            <span class="etiqueta">Motivo</span>
+            <textarea class="input motivo" rows="3" maxlength="200"
+                placeholder="Ejemplo: el cliente desistió de la compra" [value]="motivo()"
+                (input)="escribirMotivo($event)"></textarea>
+        </label>
+
+        @if (errorAnulacion(); as mensaje) {
+        <div class="aviso-error card" role="alert">{{ mensaje }}</div>
+        }
+
+        <div class="dialogo-acciones">
+            <button type="button" class="btn btn-secundario" (click)="cerrarAnulacion()"
+                [disabled]="anulando()">Cancelar</button>
+            <button type="button" class="btn btn-peligro" (click)="confirmarAnulacion()" [disabled]="anulando()">
+                {{ anulando() ? 'Anulando…' : 'Anular ticket' }}
+            </button>
+        </div>
+    </div>
+</div>
+}
+
+<!-- Revisión de una venta sin conexión -->
+@if (porRevisar(); as v) {
+<div class="velo" (click)="cerrarRevision()">
+    <div class="dialogo card" role="dialog" aria-modal="true" aria-labelledby="titulo-revisar"
+        (click)="$event.stopPropagation()">
+        <h2 id="titulo-revisar">Revisar ticket {{ v.numeroTicket }}</h2>
+        <p>
+            Venta cobrada sin conexión (provisional {{ v.ticketProvisional }}) por {{ v.cajero }}.
+            @if (v.conFaltante) {
+            Se vendieron unidades que el sistema no tenía: el stock se ajustó con una entrada automática por faltante.
+            }
+            @if (v.conDiferenciaPrecio) {
+            El precio cobrado no coincide con el del catálogo; se respetó el precio cobrado.
+            }
+            Confirma después de verificar el conteo físico o la etiqueta de precio.
+        </p>
+
+        <label class="campo">
+            <span class="etiqueta">Observación</span>
+            <textarea class="input motivo" rows="3" maxlength="200"
+                placeholder="Ejemplo: conteo físico confirma las unidades vendidas" [value]="observacion()"
+                (input)="escribirObservacion($event)"></textarea>
+        </label>
+
+        @if (errorRevision(); as mensaje) {
+        <div class="aviso-error card" role="alert">{{ mensaje }}</div>
+        }
+
+        <div class="dialogo-acciones">
+            <button type="button" class="btn btn-secundario" (click)="cerrarRevision()"
+                [disabled]="revisando()">Cancelar</button>
+            <button type="button" class="btn btn-primario" (click)="confirmarRevision()" [disabled]="revisando()">
+                {{ revisando() ? 'Guardando…' : 'Marcar como revisada' }}
+            </button>
+        </div>
+    </div>
+</div>
+}

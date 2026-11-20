@@ -19,9 +19,6 @@
           </button>
         }
       </div>
-      <button type="button" class="btn btn-secundario" (click)="recalcular()" [disabled]="cargando()">
-        {{ cargando() ? 'Calculando…' : 'Recalcular' }}
-      </button>
     </div>
   </header>
 
@@ -234,7 +231,7 @@
       </div>
 
       <p class="pie-tabla detalle">
-        Cálculo del {{ d.calculadoEn | date: 'dd/MM/yyyy HH:mm' }}.
+        Último cálculo: {{ d.calculadoEn | date: 'dd/MM/yyyy HH:mm:ss' }}. Se recalcula solo con cada venta.
         Rotación semanal = unidades vendidas ÷ semanas del período.
       </p>
     </article>

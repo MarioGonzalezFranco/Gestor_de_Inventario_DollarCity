@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node --watch --env-file=.env src/server.js",
     "start": "node --env-file=.env src/server.js",
-    "claves:demo": "node --env-file=.env src/scripts/asignar-claves.js"
+    "claves:demo": "node --env-file=.env src/scripts/asignar-claves.js",
+    "pin": "node --env-file=.env src/scripts/asignar-pin.js"
   },
   "keywords": [],
   "author": "",

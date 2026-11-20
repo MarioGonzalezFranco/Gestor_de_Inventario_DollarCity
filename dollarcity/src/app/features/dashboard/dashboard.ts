@@ -10,14 +10,11 @@ import { InventarioService } from '../../core/services/inventario.service';
   imports: [RouterLink, CurrencyPipe, DecimalPipe],
   template: `
     <section class="pagina">
-      <header class="encabezado">
+          <header class="encabezado">
         <div>
           <h1>{{ auth.usuario()?.nombreCompleto }}</h1>
           <p>{{ auth.nombreRol() }} · {{ auth.ubicacionActiva()?.nombre }}</p>
         </div>
-        <button type="button" class="btn btn-secundario" (click)="inventario.recargar()" [disabled]="inventario.cargando()">
-          {{ inventario.cargando() ? 'Actualizando…' : 'Actualizar' }}
-        </button>
       </header>
 
       @if (inventario.error(); as mensaje) {

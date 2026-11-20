@@ -5,10 +5,11 @@ import { APP_NOMBRE, APP_SUBTITULO, MENU } from '../../core/config/constantes';
 import { AuthService } from '../../core/services/auth.service';
 import { InventarioService } from '../../core/services/inventario.service';
 import { Icono } from '../../shared/icono/icono';
+import { EstadoConexion } from '../../shared/estado-conexion/estado-conexion';
 
 @Component({
   selector: 'app-shell',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, Icono],
+    imports: [RouterOutlet, RouterLink, RouterLinkActive, Icono, EstadoConexion],
   templateUrl: './shell.html',
   styleUrl: './shell.css'
 })

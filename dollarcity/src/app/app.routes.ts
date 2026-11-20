@@ -11,6 +11,13 @@ export const routes: Routes = [
     canActivate: [guestGuard],
     loadComponent: () => import('./features/auth/login/login').then(m => m.Login)
   },
+  // Pantalla completa del cajero (sin menú lateral)
+  {
+    path: 'punto-venta',
+    canActivate: [authGuard, roleGuard],
+    data: { roles: ['CAJERO', 'SUPERVISOR'] },
+    loadComponent: () => import('./features/punto-venta/punto-venta').then(m => m.PuntoVenta)
+  },
   {
     path: '',
     component: Shell,
@@ -23,6 +30,11 @@ export const routes: Routes = [
         path: 'dashboard',
         data: { roles: ['ADMINISTRADOR', 'SUPERVISOR', 'BODEGUERO'] },
         loadComponent: () => import('./features/dashboard/dashboard').then(m => m.Dashboard)
+      },
+      {
+        path: 'ventas',
+        data: { roles: ['ADMINISTRADOR', 'SUPERVISOR', 'CAJERO'] },
+        loadComponent: () => import('./features/ventas/ventas').then(m => m.Ventas)
       },
       {
         path: 'inventario',

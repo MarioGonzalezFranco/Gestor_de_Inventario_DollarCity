@@ -1,0 +1,7 @@
+Codigo de verificación de supervisor: 482913
+-----------------------------------------------
+Plan a futuro del proyecto:
+- implementar facturación electronica
+- agregar mas sucursales y perfiles
+- subir proyecto a AWS
+-----------------------------------------------

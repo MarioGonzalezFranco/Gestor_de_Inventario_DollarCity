@@ -77,7 +77,8 @@
         <input type="search" placeholder="Buscar SKU, código EAN (13 dígitos) o descripción">
       </label>
 
-      <div class="topbar-info">
+           <div class="topbar-info">
+        <app-estado-conexion />
         <span class="fecha"><app-icono nombre="reloj" [tamano]="16" /> {{ fecha }} · {{ turno }}</span>
         <button type="button" class="btn-icono" aria-label="Notificaciones">
           <app-icono nombre="campana" />

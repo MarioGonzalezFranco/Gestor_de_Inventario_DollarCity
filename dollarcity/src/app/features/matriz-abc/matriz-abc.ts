@@ -1,9 +1,12 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { debounceTime, filter } from 'rxjs';
 
 import { AuthService } from '../../core/services/auth.service';
 import { AnalisisService } from '../../core/services/analisis.service';
+import { TiempoRealService } from '../../core/services/tiempo-real.service';
 import { ClaseAbc, MatrizAbc as DatosAbc, PeriodoAbc, ProductoAbc } from '../../core/models/analisis.model';
 
 type FiltroClase = 'TODOS' | ClaseAbc;
@@ -29,6 +32,9 @@ const ANCHO = 1000;
 const ALTO = 280;
 const MARGEN = { arriba: 16, derecha: 16, abajo: 34, izquierda: 48 };
 
+// Espera tras la última venta antes de recalcular (agrupa varios tickets seguidos)
+const ESPERA_RECALCULO_MS = 5000;
+
 @Component({
   selector: 'app-matriz-abc',
   imports: [CurrencyPipe, DatePipe, DecimalPipe],
@@ -37,6 +43,7 @@ const MARGEN = { arriba: 16, derecha: 16, abajo: 34, izquierda: 48 };
 })
 export class MatrizAbc {
   private readonly analisis = inject(AnalisisService);
+  private readonly tiempoReal = inject(TiempoRealService);
   protected readonly auth = inject(AuthService);
   private peticionActual = 0;
 
@@ -153,11 +160,24 @@ export class MatrizAbc {
         if (ubicacionId) this.cargar(ubicacionId, dias);
       });
     });
-  }
 
-  protected recalcular(): void {
-    const ubicacionId = this.auth.ubicacionActiva()?.ubicacionId;
-    if (ubicacionId) this.cargar(ubicacionId, this.dias());
+    // Cada venta o anulación cambia la clasificación; se recalcula sola y sin parpadeo.
+    // En una tienda cuentan sus ventas; en el CEDI, las de toda la red.
+    this.tiempoReal.eventos$
+      .pipe(
+        filter((e) => {
+          if (e.tipo === 'reconectado') return true;
+          if (e.tipo !== 'venta') return false;
+          const activa = this.auth.ubicacionActiva();
+          return activa?.tipo === 'CEDI' || e.ubicacionId === activa?.ubicacionId;
+        }),
+        debounceTime(ESPERA_RECALCULO_MS),
+        takeUntilDestroyed()
+      )
+      .subscribe(() => {
+        const ubicacionId = this.auth.ubicacionActiva()?.ubicacionId;
+        if (ubicacionId) this.cargar(ubicacionId, this.dias(), true);
+      });
   }
 
   protected cambiarPeriodo(dias: PeriodoAbc): void {
@@ -197,15 +217,15 @@ export class MatrizAbc {
     return { left: `${(p.x / ANCHO) * 100}%`, top: `${(p.y / ALTO) * 100}%`, derecha };
   }
 
-  private async cargar(ubicacionId: number, dias: PeriodoAbc): Promise<void> {
+  private async cargar(ubicacionId: number, dias: PeriodoAbc, silencioso = false): Promise<void> {
     const numero = ++this.peticionActual;
-    this.cargando.set(true);
+    if (!silencioso) this.cargando.set(true);
     this.error.set(null);
     try {
       const datos = await this.analisis.matrizAbc(ubicacionId, dias);
       if (numero !== this.peticionActual) return;
       this.datos.set(datos);
-      this.indiceHover.set(null);
+      if (!silencioso) this.indiceHover.set(null);
     } catch (error) {
       if (numero === this.peticionActual) this.error.set(this.mensajeDeError(error));
     } finally {
